@@ -3,3 +3,7 @@ myenv/*
 vector_store/*
 __pycache__/*
 .env
+new_vector_store/*
+
+*.pkl
+.gradio/*

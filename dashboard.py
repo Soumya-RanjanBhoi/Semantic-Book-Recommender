@@ -1,57 +1,48 @@
-import pandas as pd
-import numpy as np
 import gradio as gr
-from dotenv import load_dotenv
-from recommendation import retrieve_semantic_recommendation
-
-load_dotenv()
-
-
-df = pd.read_csv("book_with_emotion.csv")
+from prediction import PredictionPipeline
+import os
+obj = PredictionPipeline()
 
 
-df['large_thumbnail'] = df['thumbnail'] + "&fife=w800"
-df['large_thumbnail'] = np.where(
-    df['large_thumbnail'].isna(), 
-    "cover-not-found.jpg", 
-    df['large_thumbnail']
-)
+def get_recommendation(query: str, category: str, tone: str, top: int = 15):
+    if not query.strip():
+        return []
 
-def get_recommendation(query: str, category: str = "All", tone: str = "All", top: int = 15):
-    retrieved_isbns = retrieve_semantic_recommendation(query)
-    
-    book_recs = df[df['isbn13'].astype(str).isin([str(isbn) for isbn in retrieved_isbns])].copy()
+    retrieved_isbns = obj.retrieve_semantic_recommendation(query)
 
+    if not retrieved_isbns:
+        return []
 
-    if category != 'All':
-        book_recs = book_recs[book_recs['modified_category'] == category]
+    book_recs = obj.book_df[obj.book_df["isbn13"].astype(str).isin([str(isbn) for isbn in retrieved_isbns])].copy()
 
-    if tone == "Happy":
-        book_recs.sort_values(by="joy", ascending=False, inplace=True)
-    elif tone == "Surprising":  
-        book_recs.sort_values(by="surprise", ascending=False, inplace=True)
-    elif tone == "Angry":
-        book_recs.sort_values(by="anger", ascending=False, inplace=True)
-    elif tone == "Suspenseful":
-        book_recs.sort_values(by="fear", ascending=False, inplace=True)
-    elif tone == "Sad":
-        book_recs.sort_values(by="sadness", ascending=False, inplace=True)
-    
+    if category != "All":
+        book_recs = book_recs[book_recs["modified_category"] == category]
+
+    tone_map = {
+        "Happy": "joy",
+        "Surprising": "surprise",
+        "Angry": "anger",
+        "Suspenseful": "fear",
+        "Sad": "sadness",
+    }
+
+    if tone in tone_map:
+        book_recs.sort_values(by=tone_map[tone],ascending=False,inplace=True)
+
     return book_recs.head(top)
+
 
 def display(query: str, category: str, tone: str):
     recommendations = get_recommendation(query, category, tone)
     results = []
 
     for _, row in recommendations.iterrows():
-
-        description = str(row["description_x"])
+        description = str(row.get("description_x", ""))
         truncated_desc = " ".join(description.split()[:30]) + "..."
 
-    
-        authors_raw = str(row["authors"])
+        authors_raw = str(row.get("authors", "Unknown author"))
         authors_split = authors_raw.split(";")
-        
+
         if len(authors_split) == 2:
             authors_str = f"{authors_split[0]} and {authors_split[1]}"
         elif len(authors_split) > 2:
@@ -59,43 +50,53 @@ def display(query: str, category: str, tone: str):
         else:
             authors_str = authors_raw
 
-        caption = f"{row['title']} by {authors_str}: {truncated_desc}"
-        results.append((row["large_thumbnail"], caption))
-    
+        caption = f"**{row['title']}**  \n{authors_str}  \n{truncated_desc}"
+
+        results.append(
+            (row.get("large_thumbnail", None), caption)
+        )
+
     return results
 
 
-categories = ["All"] + sorted(df["modified_category"].dropna().unique().tolist())
+categories = ["All"] + sorted(
+    obj.book_df["modified_category"].dropna().unique().tolist()
+)
+
 tones = ["All", "Happy", "Surprising", "Angry", "Suspenseful", "Sad"]
 
-with gr.Blocks(theme=gr.themes.Glass()) as dashboard:
-    gr.Markdown("# Semantic Book Recommender")
 
-    with gr.Row():
-        user_query = gr.Textbox(
-            label="Please enter a description of a book:",
-            placeholder="e.g., A story about forgiveness"
-        )
-        category_dropdown = gr.Dropdown(
-            choices=categories, 
-            label="Select a category:", 
-            value="All"
-        )
-        tone_dropdown = gr.Dropdown(
-            choices=tones, 
-            label="Select an emotional tone:", 
-            value="All"
-        )
-        submit_button = gr.Button("Find recommendations")
+with gr.Blocks(
+    theme=gr.themes.Soft(),
+    title="Semantic Book Recommender"
+) as dashboard:
 
-    gr.Markdown("## Recommendations")
-    output = gr.Gallery(label="Recommended books", columns=8, rows=2)
-
-    submit_button.click(
-        fn=display,
-        inputs=[user_query, category_dropdown, tone_dropdown],
-        outputs=output
+    gr.Markdown(
+        """
+        # 📚 Semantic Book Recommender  
+        Describe a book you feel like reading.  
+        The system understands *meaning*, not keywords.
+        """
     )
 
+    with gr.Row():
+        with gr.Column(scale=3):
+            user_query = gr.Textbox(label="Book description",placeholder="A quiet story about nature and solitude",lines=2)
+
+            submit_button = gr.Button("Find recommendations",variant="primary")
+
+        with gr.Column(scale=1):
+            category_dropdown = gr.Dropdown(choices=categories,label="Category",value="All")
+
+            tone_dropdown = gr.Dropdown(choices=tones,label="Emotional tone",value="All")
+
+    gr.Markdown("## Recommendations")
+
+    output = gr.Gallery(label="",columns=6,rows=2,height="auto",show_label=False)
+
+    submit_button.click(fn=display,inputs=[user_query, category_dropdown, tone_dropdown],outputs=output)
+
+
 if __name__ == "__main__":
-    dashboard.launch(share=True)
+    dashboard.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 8080)), share=False)
+
