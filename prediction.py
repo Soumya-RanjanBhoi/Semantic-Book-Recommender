@@ -14,7 +14,7 @@ class PredictionPipeline:
         self.PROJECT_ID = os.environ.get("GCLOUD_PROJECT")
         self.GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME")
         self.GCS_INDEX_PATH = "vector_store"
-        self.STORE_LOCAL_PATH = "/vector_store"
+        self.STORE_LOCAL_PATH = "/tmp/vector_store"
 
         self.book_df = pd.read_csv("final_book_df.csv")
         print("Book dataframe loaded")

@@ -24,3 +24,4 @@ def download_faiss_index(bucket_name,blob_path,local_dir,PROJECT_ID,embs):
     
     except Exception as e:
         print(f"Could Not download Vector Store from Cloud. Error-{e}")
+        raise
